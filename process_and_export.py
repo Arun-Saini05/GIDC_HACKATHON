@@ -173,14 +173,29 @@ def load_and_process_data():
             # Risk
             risk = neighbor_row['WCI']
             
-            # Weight formula
-            weight = dist * (1 + (risk / 5.0)) # Risk impact factor
+            # Weight formula - Threshold-based non-linear penalty
+            # Goal: Strictly avoid RED (High), tolerate ORANGE (Medium) if short, prefer GREEN (Low)
             
+            target_category = neighbor_row['Hotspot_Category']
+            
+            if target_category == 'High':
+                penalty_multiplier = 10.0 # Heavy penalty: 1km -> 10km effective
+            elif target_category == 'Medium':
+                penalty_multiplier = 2.0 # Mild penalty: 1km -> 2km effective
+            else: # Low or No Data
+                penalty_multiplier = 1.0 # No extra penalty: 1km -> 1km effective
+                
+            # Base weight is distance * multiplier
+            # We also add a small linear factor of risk to differentiate within categories
+            # weight = dist * (penalty_multiplier + (risk * 0.1)) 
+            weight = dist * penalty_multiplier
+
             edges.append({
                 'target': neighbor_name,
                 'weight': weight,
                 'distance': dist,
-                'risk': risk
+                'risk': risk,
+                'category': target_category
             })
         
         adj_list[district] = edges
