@@ -5,6 +5,10 @@ import os
 import math
 import networkx as nx
 from pydantic import BaseModel
+import asyncio
+import random
+import uuid
+from datetime import datetime, timedelta
 
 app = FastAPI(title="SafeTravels India API")
 
@@ -88,6 +92,128 @@ def load_data():
 
 load_data()
 
+# ── Real-Time Crime Tweets Simulated Stream ──────────────────────────────────────────
+
+# In-memory store of active incidents detected via NLP/Twitter
+active_incidents = []  # List of dicts
+
+CRIME_KEYWORDS = [
+    "murder", "killed", "stabbed", "stabbing", "shot", "shooting", 
+    "robbery", "robbed", "theft", "stolen", "riot", "protest", 
+    "violence", "assault", "attacked", "accident", "crash"
+]
+
+NEGATIVE_WORDS = [
+    "terrible", "horrible", "scary", "avoid", "danger", "alert", 
+    "warning", "bad", "panic", "blood", "dead", "fatal", "tragic", "emergency"
+]
+
+TWEET_TEMPLATES = [
+    "A terrible {crime} just happened in {district}. People are panicking! Avoid the area.",
+    "Emergency! Please avoid {district}, there's a huge {crime} right now. Stay safe everyone.",
+    "Just witnessed a horrible {crime} at the main junction in {district}. Police are on the way. #Alert",
+    "Warning: major {crime} reported in {district}. Traffic is stopped and the situation is scary.",
+    "Tragic news coming from {district} about a {crime}... so sad.",
+    "Violence erupting in {district}. It looks like a {crime}. Stay indoors!"
+]
+
+def analyze_tweet(text: str):
+    """Offline NLP-style sentiment and entity extraction without external packages."""
+    text_lower = text.lower()
+    
+    # 1. Check for crime presence
+    detected_crime = None
+    for crime in CRIME_KEYWORDS:
+        if crime in text_lower:
+            detected_crime = crime.title()
+            break
+            
+    # 2. Check sentiment (must have negative words to be flagged as critical incident)
+    sentiment_score = sum(1 for word in NEGATIVE_WORDS if word in text_lower)
+    
+    # 3. Extract location (district)
+    detected_district = None
+    # Sort by length descending to match longest district names first (e.g., "South Andaman" before "Andaman")
+    sorted_districts = sorted(district_lookup.keys(), key=len, reverse=True)
+    for dist in sorted_districts:
+        # Check if district name is in text. 
+        if dist.lower() in text_lower:
+            detected_district = dist
+            break
+            
+    is_critical_incident = (detected_crime is not None) and (sentiment_score > 0) and (detected_district is not None)
+    
+    return {
+        "is_incident": is_critical_incident,
+        "crime_type": detected_crime,
+        "district": detected_district,
+        "sentiment_score": sentiment_score
+    }
+
+def generate_simulated_tweet():
+    if not district_lookup:
+        return None
+        
+    district = random.choice(list(district_lookup.keys()))
+    crime = random.choice(CRIME_KEYWORDS)
+    template = random.choice(TWEET_TEMPLATES)
+    
+    tweet = template.format(crime=crime, district=district.title())
+    return tweet
+
+async def tweet_stream_loop():
+    print("Started simulated X (Twitter) stream for real-time incidents...")
+    while True:
+        try:
+            # Generate a new tweet ~40% of the time, to pace things out
+            if random.random() < 0.4:
+                raw_tweet = generate_simulated_tweet()
+                if raw_tweet:
+                    analysis = analyze_tweet(raw_tweet)
+                    if analysis["is_incident"]:
+                        district_upper = analysis["district"].upper()
+                        # resolve node_id
+                        node_id = display_to_node.get(district_upper, district_upper)
+                        centroid = district_centroids.get(node_id)
+                        
+                        inc_lat, inc_lng = None, None
+                        if centroid:
+                            inc_lat, inc_lng = centroid["lat"], centroid["lng"]
+                            
+                        # Add to active incidents
+                        now = datetime.now()
+                        new_incident = {
+                            "id": str(uuid.uuid4()),
+                            "time": now.isoformat(),
+                            "source_text": raw_tweet,
+                            "crime_type": analysis["crime_type"],
+                            "district": district_upper,
+                            "lat": inc_lat,
+                            "lng": inc_lng,
+                            # Expiration for demo purposes (e.g. 15 minutes)
+                            "expires": (now + timedelta(minutes=15)).isoformat()
+                        }
+                        
+                        # Only keep last 15 incidents to prevent map clutter over long periods
+                        global active_incidents
+                        active_incidents.insert(0, new_incident)
+                        active_incidents = active_incidents[:15]
+                        print(f"[X STREAM ALERT] Extracted '{new_incident['crime_type']}' in '{new_incident['district']}' via tweet analysis.")
+                        
+            # Clean expired incidents
+            current_time = datetime.now().isoformat()
+            active_incidents[:] = [inc for inc in active_incidents if inc['expires'] > current_time]
+
+        except Exception as e:
+            print(f"Error in tweet stream: {e}")
+            
+        await asyncio.sleep(5) # run every 5s
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(tweet_stream_loop())
+# ─────────────────────────────────────────────────────────────────────────────
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.get("/")
@@ -142,7 +268,9 @@ def get_safest_route(request: RouteRequest):
         #
         # BIAS = 5.0  ->  going 1 degree backward adds 5x extra cost.
 
-        BACKWARD_BIAS = 5.0
+        # BACKWARD_BIAS penalizes going backwards, but 5.0 is too aggressive
+        # combined with massive crime weights, leading to geographical zig-zags.
+        BACKWARD_BIAS = 1.0
 
         use_bias = bool(
             district_centroids
@@ -156,7 +284,28 @@ def get_safest_route(request: RouteRequest):
 
             query_graph = nx.DiGraph()
             for u, v, data in district_graph.edges(data=True):
-                base_weight = data['weight']
+                # Dynamically redefine base_weight to prevent massive detours
+                # The exported graph has original geo-distance and categorical risk.
+                dist = data.get('distance', data.get('weight', 1.0))
+                cat = data.get('category', 'No Data')
+                
+                # Sensible penalties: High crime = +80% distance, Medium = +25%.
+                # This ensures the algorithm actively tries to bypass dangerous clusters
+                # (like the red zone across MH/CG/MP) without making a 1000km detour.
+                penalty = 1.0
+                if cat == 'High':
+                    penalty = 1.8
+                elif cat == 'Medium':
+                    penalty = 1.25
+                    
+                # REAL-TIME INCIDENT PENALTY
+                # Get current active incident districts
+                active_nodes = {display_to_node.get(inc["district"], inc["district"]) for inc in active_incidents}
+                if u in active_nodes or v in active_nodes:
+                    penalty *= 20.0  # massive detour to avoid active crises
+                
+                base_weight = dist * penalty
+                
                 cu = district_centroids.get(u)
                 cv = district_centroids.get(v)
 
@@ -164,7 +313,7 @@ def get_safest_route(request: RouteRequest):
                     d_before = geo_dist(cu['lat'], cu['lng'], dest_lat, dest_lng)
                     d_after  = geo_dist(cv['lat'], cv['lng'], dest_lat, dest_lng)
                     backward = max(0.0, d_after - d_before)
-                    modified = base_weight + backward * BACKWARD_BIAS
+                    modified = base_weight + (backward * BACKWARD_BIAS)
                 else:
                     modified = base_weight
 
@@ -172,11 +321,25 @@ def get_safest_route(request: RouteRequest):
 
             path_names = nx.shortest_path(query_graph, source=source_node,
                                            target=dest_node, weight='weight')
-            algo_used = "Dijkstra+DirectionalBias"
+            algo_used = "Dijkstra+DirectionalBias(Optimized)"
         else:
-            path_names = nx.shortest_path(district_graph, source=source_node,
+            # Create a sensibly-weighted graph even without bias
+            query_graph = nx.DiGraph()
+            active_nodes = {display_to_node.get(inc["district"], inc["district"]) for inc in active_incidents}
+            
+            for u, v, data in district_graph.edges(data=True):
+                dist = data.get('distance', data.get('weight', 1.0))
+                cat = data.get('category', 'No Data')
+                penalty = 1.3 if cat == 'High' else (1.15 if cat == 'Medium' else 1.0)
+                
+                if u in active_nodes or v in active_nodes:
+                    penalty *= 20.0
+                    
+                query_graph.add_edge(u, v, weight=dist * penalty)
+                
+            path_names = nx.shortest_path(query_graph, source=source_node,
                                            target=dest_node, weight='weight')
-            algo_used = "Dijkstra"
+            algo_used = "Dijkstra(Optimized)"
 
         print(f"[{algo_used}] {len(path_names)} hops: {' -> '.join(path_names)}")
 
@@ -199,6 +362,11 @@ def get_safest_route(request: RouteRequest):
     except Exception as e:
         return {"error": str(e)}
 
+@app.get("/api/realtime-crimes")
+def get_realtime_crimes():
+    """Return currently active incidents scraped via simulated X stream."""
+    return {"incidents": active_incidents}
+
 @app.get("/api/road-crimes")
 def get_road_crimes():
     """Return road crime classification data for all districts."""
@@ -220,6 +388,32 @@ def get_road_crimes():
             "motor_vehicle": round(props.get('motor_vehicle_act', 0), 4),
             "death_by_negligence": round(props.get('causing_death_by_negligence', 0), 4),
             "robbery": round(props.get('robbery', 0), 4),
+        })
+    return results
+
+@app.get("/api/women-crimes")
+def get_women_crimes():
+    """Return women crime classification data for all districts."""
+    if not crime_data:
+        return {"error": "Data not loaded"}
+
+    results = []
+    for feature in crime_data['features']:
+        props = feature['properties']
+        district = props.get('district_std') or props.get('district')
+        if not district:
+            continue
+        results.append({
+            "district": district,
+            "state": props.get('st_nm', 'Unknown'),
+            "women_crime_score": round(props.get('Women_Crime_Score', 0), 4),
+            "women_crime_category": props.get('Women_Crime_Category', 'No Data'),
+            "rape": round(props.get('rape', 0), 4),
+            "dowry_deaths": round(props.get('dowry_deaths', 0), 4),
+            "assault_on_women": round(props.get('assault_on_women', 0), 4),
+            "cruelty_by_husband": round(props.get('cruelty_by_husband_or_his_relatives', 0), 4),
+            "attempt_to_commit_rape": round(props.get('attempt_to_commit_rape', 0), 4),
+            "insult_to_the_modesty_of_women": round(props.get('insult_to_the_modesty_of_women', 0), 4)
         })
     return results
 
@@ -281,6 +475,8 @@ def search(q: str = ""):
             "future_trend": p.get('Future_Increase_Chance', 'N/A'),
             "road_crime_category": p.get('Road_Crime_Category', 'No Data'),
             "road_crime_trend": p.get('Road_Crime_Future_Trend'),
+            "women_crime_category": p.get('Women_Crime_Category', 'No Data'),
+            "women_crime_trend": p.get('Women_Crime_Future_Trend'),
         }
 
     # ── 2. Try state match ───────────────────────────────────────────────────
@@ -397,5 +593,5 @@ def search(q: str = ""):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)
 

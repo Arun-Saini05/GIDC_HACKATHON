@@ -42,6 +42,31 @@ const RoadCrimeBadge = ({ cat, trend }) => {
     );
 };
 
+const WomenCrimeBadge = ({ cat, trend }) => {
+    if (!cat || cat === 'No Data') return null;
+    const barCol = cat === 'High' ? '#EF4444' : cat === 'Medium' ? '#F59E0B' : '#10B981';
+    return (
+        <div className="pt-2 mt-2 border-t border-slate-700/40 space-y-1.5">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                    <svg className="w-3 h-3 text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                            d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Women Crime</span>
+                </div>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${catBadge(cat)}`}>{cat}</span>
+            </div>
+            {trend && (
+                <div className="flex justify-between items-center">
+                    <span className="text-[10px] text-slate-500">Women Future Trend</span>
+                    <span className={`text-xs font-bold ${trendColor(trend)}`}>{trendIcon(trend)} {trend}</span>
+                </div>
+            )}
+        </div>
+    );
+};
+
 /* ── Search result cards ──────────────────────────────────── */
 const DistrictCard = ({ data, onClose }) => (
     <div className="rounded-lg border border-slate-600 bg-slate-800/80 p-3 space-y-2 relative">
@@ -62,7 +87,7 @@ const DistrictCard = ({ data, onClose }) => (
                 </span>
             </div>
         </div>
-        <RoadCrimeBadge cat={data.road_crime_category} trend={data.road_crime_trend} />
+        <WomenCrimeBadge cat={data.women_crime_category} trend={data.women_crime_trend} />
     </div>
 );
 
@@ -188,8 +213,12 @@ const Sidebar = ({ hoveredDistrict, setRoutePath, setSearchTarget, showRoads, se
     const showRoadCrime =
         hoveredDistrict &&
         hoveredDistrict.roadCrimeCategory &&
-        hoveredDistrict.roadCrimeCategory !== 'No Data' &&
-        (hoveredDistrict.roadCrimeScore || 0) >= 0.05;
+        hoveredDistrict.roadCrimeCategory !== 'No Data';
+
+    const showWomenCrime =
+        hoveredDistrict &&
+        hoveredDistrict.womenCrimeCategory &&
+        hoveredDistrict.womenCrimeCategory !== 'No Data';
 
     return (
         <div className="absolute top-0 left-0 h-full w-80 bg-slate-900/90 backdrop-blur-md text-white shadow-xl z-[1000] p-5 overflow-y-auto border-r border-slate-700 space-y-5">
@@ -289,6 +318,39 @@ const Sidebar = ({ hoveredDistrict, setRoutePath, setSearchTarget, showRoads, se
                                         </div>
                                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${catBadge(hoveredDistrict.roadCrimeCategory)}`}>
                                             {hoveredDistrict.roadCrimeCategory}
+                                        </span>
+                                    </div>
+                                    <div className="space-y-1.5 pt-1 border-t border-slate-700/40">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-[10px] text-slate-400">Future Trend</span>
+                                            {trend ? (
+                                                <span className={`text-xs font-bold ${trendUp ? 'text-red-400' : 'text-green-400'}`}>
+                                                    {trendUp ? '▲' : '▼'} {trend}
+                                                </span>
+                                            ) : (
+                                                <span className="text-[10px] text-slate-500 italic">N/A</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
+                        {showWomenCrime && (() => {
+                            const trend = hoveredDistrict.womenCrimeTrend || null;
+                            const trendUp = trend && !trend.includes('-');
+                            return (
+                                <div className="pt-3 border-t border-slate-700/60 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5">
+                                            <svg className="w-3.5 h-3.5 text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                                                    d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                                            </svg>
+                                            <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Women Crime</span>
+                                        </div>
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${catBadge(hoveredDistrict.womenCrimeCategory)}`}>
+                                            {hoveredDistrict.womenCrimeCategory}
                                         </span>
                                     </div>
                                     <div className="space-y-1.5 pt-1 border-t border-slate-700/40">

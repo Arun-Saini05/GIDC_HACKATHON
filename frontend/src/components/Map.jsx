@@ -98,6 +98,7 @@ const MapComponent = ({ routePath, setHoveredDistrict, searchTarget, showRoads }
     const [geoData, setGeoData] = useState(null);
     const [selectedDistrict, setSelectedDistrict] = useState(null);
     const [routeCoords, setRouteCoords] = useState([]);
+    const [activeIncidents, setActiveIncidents] = useState([]);
 
     useEffect(() => {
         if (!routePath || !geoData) return;
@@ -136,6 +137,23 @@ const MapComponent = ({ routePath, setHoveredDistrict, searchTarget, showRoads }
             })
             .catch(err => console.error("Error loading map data:", err));
     }, []);
+
+    // ── Fetch Real-time Incidents ──
+    useEffect(() => {
+        const fetchIncidents = () => {
+            axios.get('http://localhost:8001/api/realtime-crimes')
+                .then(res => {
+                    if (res.data && res.data.incidents) {
+                        setActiveIncidents(res.data.incidents);
+                    }
+                })
+                .catch(err => console.error("Error fetching real-time incidents:", err));
+        };
+        fetchIncidents();
+        const intervalId = setInterval(fetchIncidents, 5000); // Poll every 5 seconds
+        return () => clearInterval(intervalId);
+    }, []);
+    // ───────────────────────────────
 
     const style = (feature) => {
         const hotspot = feature.properties.Hotspot_Category;
@@ -185,6 +203,10 @@ const MapComponent = ({ routePath, setHoveredDistrict, searchTarget, showRoads }
                     // Total crimes + road-crime-specific YoY trend
                     totalCrimes: feature.properties.Total_Crimes || 0,
                     roadCrimeTrend: feature.properties.Road_Crime_Future_Trend || null,
+                    // Women crime data
+                    womenCrimeCategory: feature.properties.Women_Crime_Category || "No Data",
+                    womenCrimeScore: feature.properties.Women_Crime_Score || 0,
+                    womenCrimeTrend: feature.properties.Women_Crime_Future_Trend || null,
                 });
             },
             mouseout: (e) => {
@@ -251,6 +273,33 @@ const MapComponent = ({ routePath, setHoveredDistrict, searchTarget, showRoads }
                         </Marker>
                     </>
                 )}
+
+                {/* Real-time Incident Markers */}
+                {activeIncidents.map(inc => {
+                    if (!inc.lat || !inc.lng) return null;
+                    const pulsingIcon = L.divIcon({
+                        className: 'bg-transparent border-none outline-none',
+                        html: '<div class="realtime-incident-marker"></div>',
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10]
+                    });
+                    return (
+                        <Marker key={inc.id} position={[inc.lat, inc.lng]} icon={pulsingIcon}>
+                            <Popup className="realtime-popup">
+                                <div className="p-1">
+                                    <div className="font-bold text-red-600 uppercase text-xs mb-1">🚨 Live Alert</div>
+                                    <div className="font-bold text-sm mb-1">{inc.crime_type} reporting in {inc.district}</div>
+                                    <div className="text-xs italic text-gray-600 border-l-2 border-red-300 pl-2 my-2">
+                                        "{inc.source_text}"
+                                    </div>
+                                    <div className="text-[10px] text-gray-400 mt-2">
+                                        Detected via X at {new Date(inc.time).toLocaleTimeString()}
+                                    </div>
+                                </div>
+                            </Popup>
+                        </Marker>
+                    );
+                })}
             </MapContainer>
         </div>
     );
