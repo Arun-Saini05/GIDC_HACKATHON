@@ -35,7 +35,7 @@ const FlyToSearchTarget = ({ target, geoData }) => {
         }
 
         if (target.type === 'state') {
-            fetch(`http://localhost:8001/api/state-boundary/${encodeURIComponent(target.name)}`)
+            fetch(`http://192.168.0.102:8001/api/state-boundary/${encodeURIComponent(target.name)}`)
                 .then(r => r.json())
                 .then(dissolved => {
                     if (cancelled) return;  // effect was cleaned up — discard stale response
@@ -99,6 +99,7 @@ const MapComponent = ({ routePath, setHoveredDistrict, searchTarget, showRoads }
     const [selectedDistrict, setSelectedDistrict] = useState(null);
     const [routeCoords, setRouteCoords] = useState([]);
     const [activeIncidents, setActiveIncidents] = useState([]);
+    const [clickedDistrict, setClickedDistrict] = useState(null);
 
     useEffect(() => {
         if (!routePath || !geoData) return;
@@ -123,7 +124,7 @@ const MapComponent = ({ routePath, setHoveredDistrict, searchTarget, showRoads }
     useEffect(() => {
         // Fetch GeoJSON from backend with cache busting (V3)
         const timestamp = new Date().getTime();
-        axios.get(`http://localhost:8001/api/districts_v3?t=${timestamp}`)
+        axios.get(`http://192.168.0.102:8001/api/districts_v3?t=${timestamp}`)
             .then(res => {
                 if (res.data.error) {
                     console.error("Backend Error:", res.data.error);
@@ -141,7 +142,7 @@ const MapComponent = ({ routePath, setHoveredDistrict, searchTarget, showRoads }
     // ── Fetch Real-time Incidents ──
     useEffect(() => {
         const fetchIncidents = () => {
-            axios.get('http://localhost:8001/api/realtime-crimes')
+            axios.get('http://192.168.0.102:8001/api/realtime-crimes')
                 .then(res => {
                     if (res.data && res.data.incidents) {
                         setActiveIncidents(res.data.incidents);
@@ -217,7 +218,15 @@ const MapComponent = ({ routePath, setHoveredDistrict, searchTarget, showRoads }
                 setHoveredDistrict(null);
             },
             click: (e) => {
-                // Select district logic
+                const props = feature.properties;
+                setClickedDistrict({
+                    name: props.district_std || props.district || "Unknown",
+                    date: props.Analysis_Date || new Date().toISOString().split('.')[0].replace('T', ' '),
+                    risk: props.Hotspot_Category || "No Data",
+                    trend: props.Future_Increase_Chance || "N/A",
+                    wci: props.WCI || 0,
+                    latlng: e.latlng
+                });
             }
         });
     };
@@ -227,7 +236,6 @@ const MapComponent = ({ routePath, setHoveredDistrict, searchTarget, showRoads }
     return (
         <div className="h-full w-full z-0">
             <MapContainer key="map-container-v1" center={[22.5937, 78.9629]} zoom={5} scrollWheelZoom={true} className="h-full w-full" zoomControl={false}>
-                <ZoomControl position="bottomleft" />
                 <TileLayer
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                     url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" // Dark theme base map
@@ -300,6 +308,37 @@ const MapComponent = ({ routePath, setHoveredDistrict, searchTarget, showRoads }
                         </Marker>
                     );
                 })}
+                {clickedDistrict && (
+                    <Popup 
+                        position={clickedDistrict.latlng}
+                        onClose={() => setClickedDistrict(null)}
+                        className="custom-district-popup"
+                    >
+                        <div className="bg-white p-2.5 rounded-xl shadow-2xl text-slate-900 border-none min-w-[140px] max-w-[180px]">
+                            <h3 className="font-bold text-[12px] uppercase tracking-tight mb-0.5 text-slate-800 leading-none">{clickedDistrict.name}</h3>
+                            <p className="text-[8px] text-slate-400 mb-2 border-b border-slate-100 pb-1">Date: {clickedDistrict.date}</p>
+                            
+                            <div className="space-y-1 text-[10px]">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-slate-500 font-medium">Risk:</span>
+                                    <span className={`font-black tracking-tight ${clickedDistrict.risk === 'High' ? 'text-red-500' : clickedDistrict.risk === 'Medium' ? 'text-orange-400' : 'text-green-500'}`}>
+                                        {clickedDistrict.risk.toUpperCase()}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-slate-500 font-medium">Trend:</span>
+                                    <span className={`font-black tracking-tight ${clickedDistrict.trend && !clickedDistrict.trend.includes('-') ? 'text-red-500' : 'text-green-500'}`}>
+                                        {clickedDistrict.trend}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between pt-1 border-t border-slate-500/10">
+                                    <span className="text-slate-500 font-bold">WCI:</span>
+                                    <span className="font-black text-slate-700">{Number(clickedDistrict.wci).toFixed(3)}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </Popup>
+                )}
             </MapContainer>
         </div>
     );

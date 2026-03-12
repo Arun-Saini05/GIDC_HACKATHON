@@ -136,12 +136,13 @@ def analyze_tweet(text: str):
     # Sort by length descending to match longest district names first (e.g., "South Andaman" before "Andaman")
     sorted_districts = sorted(district_lookup.keys(), key=len, reverse=True)
     for dist in sorted_districts:
-        # Check if district name is in text. 
-        if dist.lower() in text_lower:
+        # Simple word boundary check (basic)
+        if f" {dist.lower()} " in f" {text_lower} " or f"({dist.lower()})" in text_lower:
             detected_district = dist
             break
             
-    is_critical_incident = (detected_crime is not None) and (sentiment_score > 0) and (detected_district is not None)
+    is_critical_incident = (detected_crime is not None) and (detected_district is not None)
+    # Note: news articles are usually somewhat negative by nature if crime is mentioned
     
     return {
         "is_incident": is_critical_incident,

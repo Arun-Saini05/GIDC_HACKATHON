@@ -158,57 +158,32 @@ const SuggestionList = ({ matches, onSelect }) => (
 );
 
 /* ── Main Sidebar ─────────────────────────────────────────── */
-const Sidebar = ({ hoveredDistrict, setRoutePath, setSearchTarget, showRoads, setShowRoads }) => {
-    const [source, setSource] = useState('');
-    const [destination, setDestination] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [routeResult, setRouteResult] = useState(null);
-    const [error, setError] = useState(null);
-
-    // Search state
-    const [searchQ, setSearchQ] = useState('');
-    const [searchResult, setSearchResult] = useState(null);
-    const [searchLoading, setSearchLoading] = useState(false);
-    const [searchError, setSearchError] = useState('');
+const Sidebar = ({
+    hoveredDistrict,
+    setRoutePath,
+    setSearchTarget,
+    showRoads,
+    setShowRoads,
+    isOpen,
+    onToggle,
+    searchQ,
+    setSearchQ,
+    searchResult,
+    setSearchResult,
+    searchLoading,
+    searchError,
+    handleRegionSearch,
+    // Lifted Route Props
+    source,
+    setSource,
+    destination,
+    setDestination,
+    routeLoading,
+    routeError,
+    routePath,
+    handleRouteSearch
+}) => {
     const searchRef = useRef(null);
-
-    /* Route finder */
-    const handleSearch = async () => {
-        if (!source || !destination) return;
-        setLoading(true); setError(null); setRouteResult(null);
-        try {
-            const res = await axios.post('http://localhost:8001/api/safest-route', { source, destination });
-            if (res.data.error) { setError(res.data.error); }
-            else { setRouteResult(res.data.path); setRoutePath(res.data.path); }
-        } catch (err) {
-            setError("Failed to fetch route. Is backend running?");
-        } finally { setLoading(false); }
-    };
-
-    /* Region search */
-    const handleRegionSearch = async (overrideQ) => {
-        const q = (overrideQ ?? searchQ).trim();
-        if (!q) return;
-        setSearchLoading(true); setSearchError(''); setSearchResult(null);
-        try {
-            const res = await axios.get(`http://localhost:8001/api/search?q=${encodeURIComponent(q)}`);
-            if (res.data.type === 'not_found') {
-                setSearchError(res.data.message);
-            } else {
-                setSearchResult(res.data);
-                // Tell the map to fly-to and highlight
-                if (res.data.type === 'district') {
-                    setSearchTarget({ type: 'district', name: res.data.name });
-                } else if (res.data.type === 'state') {
-                    setSearchTarget({ type: 'state', name: res.data.name });
-                } else if (res.data.type === 'suggestions' && res.data.matches?.length === 1) {
-                    setSearchTarget({ type: 'district', name: res.data.matches[0].name });
-                }
-            }
-        } catch {
-            setSearchError("Backend not reachable.");
-        } finally { setSearchLoading(false); }
-    };
 
     const showRoadCrime =
         hoveredDistrict &&
@@ -221,15 +196,24 @@ const Sidebar = ({ hoveredDistrict, setRoutePath, setSearchTarget, showRoads, se
         hoveredDistrict.womenCrimeCategory !== 'No Data';
 
     return (
-        <div className="absolute top-0 left-0 h-full w-80 bg-slate-900/90 backdrop-blur-md text-white shadow-xl z-[1000] p-5 overflow-y-auto border-r border-slate-700 space-y-5">
+        <div className={`absolute top-0 left-0 h-full w-80 bg-slate-900/95 backdrop-blur-md text-white shadow-xl z-[1000] p-5 overflow-y-auto border-r border-slate-700 space-y-5 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
+            {/* Mobile Close Button */}
+            <button
+                onClick={onToggle}
+                className="md:hidden absolute top-4 right-4 p-2 text-slate-400 hover:text-white transition-colors"
+            >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
 
             {/* ── Title ── */}
             <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
                 SafeTravels India
             </h1>
 
-            {/* ── Search Bar ── */}
-            <div className="space-y-2">
+            {/* ── Search Bar (Hidden on mobile as it's at the top level) ── */}
+            <div className="hidden md:block space-y-2">
                 <div className="flex gap-2">
                     <div className="relative flex-1">
                         <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -239,7 +223,7 @@ const Sidebar = ({ hoveredDistrict, setRoutePath, setSearchTarget, showRoads, se
                             ref={searchRef}
                             type="text"
                             value={searchQ}
-                            onChange={e => { setSearchQ(e.target.value); if (!e.target.value) { setSearchResult(null); setSearchError(''); } }}
+                            onChange={e => { setSearchQ(e.target.value); if (!e.target.value) { setSearchResult(null); } }}
                             onKeyDown={e => e.key === 'Enter' && handleRegionSearch()}
                             className="w-full bg-slate-800 border border-slate-600 rounded-lg pl-8 pr-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors placeholder-slate-500"
                             placeholder="Search district or state…"
@@ -380,19 +364,14 @@ const Sidebar = ({ hoveredDistrict, setRoutePath, setSearchTarget, showRoads, se
                 )}
             </div>
 
-            {/* ── Route Finder ── */}
-            <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                    <h2 className="text-lg font-semibold flex items-center gap-2">
-                        <span className="w-1 h-6 bg-blue-500 rounded-full"></span>
-                        Route Finder
-                    </h2>
-                    {/* Maps Toggle (Roads) */}
-                    <button
-                        onClick={() => setShowRoads(!showRoads)}
-                        className={`flex items-center gap-2 px-2.5 py-1 rounded border text-xs font-semibold transition-colors ${showRoads
-                            ? 'bg-blue-600/30 border-blue-500 text-blue-300'
-                            : 'bg-slate-800/50 border-slate-600 text-slate-400 hover:text-white'
+            {/* ── Route Finder (Hidden on mobile) ── */}
+            <div className="hidden md:block p-0 bg-slate-800 rounded-lg border border-slate-600 overflow-hidden shadow-lg mt-5">
+                <div className="p-3 bg-slate-900 border-b border-slate-700 flex justify-between items-center">
+                    <h2 className="text-xs uppercase tracking-wider text-slate-400 font-bold">Route Finder</h2>
+                    <button onClick={() => setShowRoads(!showRoads)}
+                        className={`text-[10px] px-2 py-0.5 rounded border transition-colors flex items-center gap-1 ${showRoads
+                            ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
+                            : 'bg-slate-800 border-slate-700 text-slate-500'
                             }`}
                     >
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -401,7 +380,7 @@ const Sidebar = ({ hoveredDistrict, setRoutePath, setSearchTarget, showRoads, se
                         Roads {showRoads ? 'On' : 'Off'}
                     </button>
                 </div>
-                <div className="space-y-3">
+                <div className="p-4 space-y-3">
                     <div>
                         <label className="block text-xs text-slate-400 mb-1">Source District</label>
                         <input type="text" value={source} onChange={e => setSource(e.target.value)}
@@ -414,22 +393,21 @@ const Sidebar = ({ hoveredDistrict, setRoutePath, setSearchTarget, showRoads, se
                             className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors"
                             placeholder="e.g. DELHI" />
                     </div>
-                    <button onClick={handleSearch} disabled={loading}
-                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 rounded transition-colors disabled:opacity-50">
-                        {loading ? 'Finding Safe Path...' : 'Find Safest Route'}
+                    <button onClick={handleRouteSearch} disabled={routeLoading}
+                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 rounded transition-colors disabled:opacity-50"
+                    >
+                        {routeLoading ? 'Finding Safe Path...' : 'Find Safest Route'}
                     </button>
 
-                    {error && <div className="p-3 bg-red-900/30 border border-red-800 rounded text-red-300 text-xs">{error}</div>}
-
-                    {routeResult && (
+                    {routePath && (
                         <div className="mt-2 p-4 bg-green-900/20 border border-green-800 rounded">
                             <h3 className="text-green-400 font-semibold mb-2 text-sm">Recommended Path</h3>
                             <div className="text-xs text-slate-300 space-y-1 max-h-60 overflow-y-auto pr-2">
-                                {routeResult.map((stop, i) => (
+                                {routePath.map((stop, i) => (
                                     <div key={i} className="flex items-center gap-2">
                                         <div className="flex flex-col items-center">
                                             <span className={`w-2 h-2 rounded-full ${stop.risk === 'High' ? 'bg-red-500' : stop.risk === 'Medium' ? 'bg-orange-500' : 'bg-green-500'}`} />
-                                            {i < routeResult.length - 1 && <div className="w-0.5 h-3 bg-slate-700 my-0.5" />}
+                                            {i < routePath.length - 1 && <div className="w-0.5 h-3 bg-slate-700 my-0.5" />}
                                         </div>
                                         <span>{stop.name}</span>
                                         <span className="text-[10px] text-slate-500 ml-auto">{stop.risk}</span>

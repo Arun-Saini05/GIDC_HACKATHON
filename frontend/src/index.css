@@ -23,3 +23,34 @@ body {
   border: 2px solid white;
   animation: pulse-red 2s infinite;
 }
+
+/* Animations for Mobile Search UI */
+@keyframes slide-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Custom shadow for mobile UI elements */
+/* Custom Leaflet Popup Styling */
+.custom-district-popup .leaflet-popup-content-wrapper {
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+.custom-district-popup .leaflet-popup-content {
+  margin: 0;
+  width: auto !important;
+}
+
+.custom-district-popup .leaflet-popup-tip-container {
+  display: none; /* Optional: hide the triangle if you want it more like a clean card */
+}
+
+.custom-district-popup .leaflet-popup-close-button {
+  display: none;
+}
