@@ -35,7 +35,7 @@ const FlyToSearchTarget = ({ target, geoData }) => {
         }
 
         if (target.type === 'state') {
-            fetch(`http://192.168.0.102:8001/api/state-boundary/${encodeURIComponent(target.name)}`)
+            fetch(`http://192.168.0.101:8001/api/state-boundary/${encodeURIComponent(target.name)}`)
                 .then(r => r.json())
                 .then(dissolved => {
                     if (cancelled) return;  // effect was cleaned up — discard stale response
@@ -124,7 +124,7 @@ const MapComponent = ({ routePath, setHoveredDistrict, searchTarget, showRoads }
     useEffect(() => {
         // Fetch GeoJSON from backend with cache busting (V3)
         const timestamp = new Date().getTime();
-        axios.get(`http://192.168.0.102:8001/api/districts_v3?t=${timestamp}`)
+        axios.get(`http://192.168.0.101:8001/api/districts_v3?t=${timestamp}`)
             .then(res => {
                 if (res.data.error) {
                     console.error("Backend Error:", res.data.error);
@@ -142,7 +142,7 @@ const MapComponent = ({ routePath, setHoveredDistrict, searchTarget, showRoads }
     // ── Fetch Real-time Incidents ──
     useEffect(() => {
         const fetchIncidents = () => {
-            axios.get('http://192.168.0.102:8001/api/realtime-crimes')
+            axios.get('http://192.168.0.101:8001/api/realtime-crimes')
                 .then(res => {
                     if (res.data && res.data.incidents) {
                         setActiveIncidents(res.data.incidents);
@@ -301,7 +301,7 @@ const MapComponent = ({ routePath, setHoveredDistrict, searchTarget, showRoads }
                                         "{inc.source_text}"
                                     </div>
                                     <div className="text-[10px] text-gray-400 mt-2">
-                                        Detected via X at {new Date(inc.time).toLocaleTimeString()}
+                                        {inc.source ? `Detected via ${inc.source}` : 'Detected via News Alert'} at {new Date(inc.time).toLocaleTimeString()}
                                     </div>
                                 </div>
                             </Popup>

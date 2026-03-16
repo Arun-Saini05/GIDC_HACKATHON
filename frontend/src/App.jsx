@@ -113,7 +113,7 @@ function App() {
     if (!q) return;
     setSearchLoading(true); setSearchError(''); setSearchResult(null);
     try {
-      const res = await axios.get(`http://192.168.0.102:8001/api/search?q=${encodeURIComponent(q)}`);
+      const res = await axios.get(`http://192.168.0.101:8001/api/search?q=${encodeURIComponent(q)}`);
       if (res.data.type === 'not_found') {
         setSearchError(res.data.message);
       } else {
@@ -142,7 +142,7 @@ function App() {
     if (!source || !destination) return;
     setRouteLoading(true); setRouteError(null); setRoutePath(null);
     try {
-      const res = await axios.post('http://192.168.0.102:8001/api/safest-route', { source, destination });
+      const res = await axios.post('http://192.168.0.101:8001/api/safest-route', { source, destination });
       if (res.data.error) {
         setRouteError(res.data.error);
       } else {

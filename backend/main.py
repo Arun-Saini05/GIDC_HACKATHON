@@ -163,50 +163,24 @@ def generate_simulated_tweet():
     return tweet
 
 async def tweet_stream_loop():
-    print("Started simulated X (Twitter) stream for real-time incidents...")
+    print("Started live incidents loader from live_incidents.json...")
     while True:
         try:
-            # Generate a new tweet ~40% of the time, to pace things out
-            if random.random() < 0.4:
-                raw_tweet = generate_simulated_tweet()
-                if raw_tweet:
-                    analysis = analyze_tweet(raw_tweet)
-                    if analysis["is_incident"]:
-                        district_upper = analysis["district"].upper()
-                        # resolve node_id
-                        node_id = display_to_node.get(district_upper, district_upper)
-                        centroid = district_centroids.get(node_id)
-                        
-                        inc_lat, inc_lng = None, None
-                        if centroid:
-                            inc_lat, inc_lng = centroid["lat"], centroid["lng"]
-                            
-                        # Add to active incidents
-                        now = datetime.now()
-                        new_incident = {
-                            "id": str(uuid.uuid4()),
-                            "time": now.isoformat(),
-                            "source_text": raw_tweet,
-                            "crime_type": analysis["crime_type"],
-                            "district": district_upper,
-                            "lat": inc_lat,
-                            "lng": inc_lng,
-                            # Expiration for demo purposes (e.g. 15 minutes)
-                            "expires": (now + timedelta(minutes=15)).isoformat()
-                        }
-                        
-                        # Only keep last 15 incidents to prevent map clutter over long periods
-                        global active_incidents
-                        active_incidents.insert(0, new_incident)
-                        active_incidents = active_incidents[:15]
-                        print(f"[X STREAM ALERT] Extracted '{new_incident['crime_type']}' in '{new_incident['district']}' via tweet analysis.")
-                        
-            # Clean expired incidents
-            current_time = datetime.now().isoformat()
-            active_incidents[:] = [inc for inc in active_incidents if inc['expires'] > current_time]
-
+            live_path = os.path.join(DATA_DIR, "live_incidents.json")
+            if os.path.exists(live_path):
+                with open(live_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                
+                # Filter expired incidents based on current time
+                current_time = datetime.now().isoformat()
+                valid_incidents = [inc for inc in data if inc.get('expires', '9999-12-31') > current_time]
+                
+                global active_incidents
+                # Limit to 50 active incidents for map performance
+                active_incidents = valid_incidents[:50]
+                
         except Exception as e:
-            print(f"Error in tweet stream: {e}")
+            print(f"Error loading live incidents: {e}")
             
         await asyncio.sleep(5) # run every 5s
 
